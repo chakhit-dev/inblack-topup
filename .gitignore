@@ -1,0 +1,23 @@
+# Environment & Secrets
+.env
+.env.local
+*.env
+.env.example
+
+# Dependencies & Build Artifacts
+node_modules/
+.next/
+out/
+build/
+bin/
+*.exe
+
+# Database data & logs
+postgres_data/
+*.log
+
+# sql file
+default.sql
+
+# docs
+folder-structure.md
