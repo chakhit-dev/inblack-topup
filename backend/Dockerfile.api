@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/api-bin .
+COPY --from=builder /app/migrations ./migrations
 
 EXPOSE 8080
 CMD ["./api-bin"]
