@@ -5,8 +5,6 @@ const nextConfig: NextConfig = {
   experimental: {
     agentFeedback: true,
   },
-  cacheComponents: true,
-  partialPrefetching: true,
   turbopack: {
     rules: {
       "*.css": {
@@ -14,6 +12,15 @@ const nextConfig: NextConfig = {
         as: "*.css",
       },
     },
+  },
+  async rewrites() {
+    const internalApiUrl = process.env.INTERNAL_API_URL || "http://localhost:8080";
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${internalApiUrl}/api/:path*`,
+      },
+    ];
   },
 };
 
