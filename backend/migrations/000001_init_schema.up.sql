@@ -208,6 +208,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- 13. Idempotency Keys (ACID Guarantee)
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    idempotency_key VARCHAR(128) PRIMARY KEY,
+    request_hash VARCHAR(64) NOT NULL,
+    response_status INT NOT NULL,
+    response_body JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 DROP TRIGGER IF EXISTS trg_enforce_order_status ON orders;
 CREATE TRIGGER trg_enforce_order_status
 BEFORE UPDATE OF status ON orders

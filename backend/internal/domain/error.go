@@ -12,18 +12,22 @@ type ProblemDetail struct {
 }
 
 const (
-	CodeOutOfStock          = "OUT_OF_STOCK"
-	CodeVoucherExhausted    = "VOUCHER_EXHAUSTED"
-	CodePerCustomerLimit    = "PER_CUSTOMER_LIMIT"
-	CodeIdempotencyReused   = "IDEMPOTENCY_KEY_REUSED"
-	CodeInvalidTransition   = "INVALID_TRANSITION"
-	CodeInvalidOrderID      = "INVALID_ORDER_ID"
-	CodeValidationFailed    = "VALIDATION_FAILED"
-	CodeNotFound            = "NOT_FOUND"
-	CodeUnauthorized        = "UNAUTHORIZED"
-	CodeForbidden           = "FORBIDDEN"
-	CodeRateLimitExceeded   = "RATE_LIMIT_EXCEEDED"
-	CodeInternalServerError = "INTERNAL_SERVER_ERROR"
+	CodeOutOfStock            = "OUT_OF_STOCK"
+	CodeVoucherExhausted      = "VOUCHER_EXHAUSTED"
+	CodePerCustomerLimit      = "PER_CUSTOMER_LIMIT"
+	CodeIdempotencyReused     = "IDEMPOTENCY_KEY_REUSED"
+	CodeInvalidTransition     = "INVALID_TRANSITION"
+	CodeInvalidOrderID        = "INVALID_ORDER_ID"
+	CodeValidationFailed      = "VALIDATION_FAILED"
+	CodeNotFound              = "NOT_FOUND"
+	CodeUnauthorized          = "UNAUTHORIZED"
+	CodeForbidden             = "FORBIDDEN"
+	CodeRateLimitExceeded     = "RATE_LIMIT_EXCEEDED"
+	CodeInternalServerError   = "INTERNAL_SERVER_ERROR"
+	CodePerOrderLimitExceeded = "PER_ORDER_LIMIT_EXCEEDED"
+	CodeVoucherInvalid        = "VOUCHER_INVALID"
+	CodeVoucherMinSubtotal    = "VOUCHER_MIN_SUBTOTAL"
+	CodeIdempotencyKeyReused  = "IDEMPOTENCY_KEY_REUSED"
 )
 
 func NewProblem(status int, code, title, detail string) ProblemDetail {

@@ -22,6 +22,10 @@ func main() {
 	databaseURL := getEnv("DATABASE_URL", "")
 	redisURL := getEnv("REDIS_URL", "")
 
+	jwtSecret := getEnv("JWT_SECRET", "REDACTED")
+	smtpHost := getEnv("SMTP_HOST", "mailpit")
+	smtpPort := getEnv("SMTP_PORT", "1025")
+
 	if appEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -95,36 +99,57 @@ func main() {
 		})
 	})
 
+	webhookSecret := getEnv("PAYMENT_WEBHOOK_SECRET", "REDACTED")
+
 	productHandler := handler.NewProductHandler(dbPool)
+	orderHandler := handler.NewOrderHandler(dbPool)
+	webhookHandler := handler.NewWebhookHandler(dbPool, redisClient, webhookSecret)
+	authHandler := handler.NewAuthHandler(dbPool, redisClient, jwtSecret, smtpHost, smtpPort)
+	adminHandler := handler.NewAdminHandler(dbPool, redisClient)
 
 	v1 := r.Group("/api/v1")
 	{
 		v1.GET("/products", productHandler.ListProducts)
 		v1.GET("/products/:slug", productHandler.GetProductBySlug)
 
-		v1.POST("/orders", placeholderHandler("create order"))
-		v1.GET("/orders/:id", placeholderHandler("get order detail"))
-		v1.POST("/orders/track", placeholderHandler("guest track order"))
-		v1.GET("/orders/:id/events", placeholderHandler("sse order events"))
-		v1.POST("/webhooks/payment", placeholderHandler("payment webhook"))
+		v1.POST("/orders", orderHandler.CreateOrder)
+		v1.GET("/orders/:id", orderHandler.GetOrder)
+		v1.POST("/orders/track", orderHandler.TrackOrder)
+		v1.GET("/orders/:id/events", orderHandler.StreamOrderEvents)
+		v1.POST("/webhooks/payment", webhookHandler.HandlePaymentWebhook)
 
 		auth := v1.Group("/auth/otp")
 		{
-			auth.POST("/request", placeholderHandler("request otp"))
-			auth.POST("/verify", placeholderHandler("verify otp"))
+			auth.POST("/request", authHandler.RequestOTP)
+			auth.POST("/verify", authHandler.VerifyOTP)
 		}
 
 		admin := v1.Group("/admin")
 		{
-			admin.GET("/orders", placeholderHandler("admin list orders"))
-			admin.POST("/orders/:id/refund", placeholderHandler("admin refund order"))
-			admin.POST("/orders/:id/retry-fulfillment", placeholderHandler("admin retry fulfillment"))
-			admin.GET("/audit-logs", placeholderHandler("admin audit logs"))
-			admin.POST("/reconciliation", placeholderHandler("admin reconciliation"))
+			admin.GET("/orders",
+				handler.RequireRoles("viewer", "support", "finance", "superadmin"),
+				adminHandler.ListOrders,
+			)
+			admin.POST("/orders/:id/refund",
+				handler.RequireRoles("finance", "superadmin"),
+				adminHandler.RefundOrder,
+			)
+			admin.POST("/orders/:id/retry-fulfillment",
+				handler.RequireRoles("support", "superadmin"),
+				adminHandler.RetryFulfillment,
+			)
+			admin.GET("/audit-logs",
+				handler.RequireRoles("viewer", "support", "finance", "superadmin"),
+				adminHandler.ListAuditLogs,
+			)
+			admin.POST("/reconciliation",
+				handler.RequireRoles("finance", "superadmin"),
+				adminHandler.ReconcilePayments,
+			)
 		}
 
 		if appEnv == "test" {
-			v1.POST("/_test/reset", placeholderHandler("test reset database"))
+			v1.POST("/_test/reset", adminHandler.TestReset)
 		} else {
 			v1.POST("/_test/reset", func(c *gin.Context) {
 				c.Status(http.StatusNotFound)
