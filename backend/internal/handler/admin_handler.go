@@ -676,10 +676,10 @@ func (h *AdminHandler) TestReset(c *gin.Context) {
 		return
 	}
 
-	// ล้าง Redis Stream
 	_ = h.redis.Del(ctx, FulfillmentStreamKey).Err()
-
+	_ = h.redis.XGroupCreateMkStream(ctx, FulfillmentStreamKey, "fulfillment-workers", "0").Err()
 	c.JSON(http.StatusOK, gin.H{"status": "reset_completed"})
+
 }
 
 func encodeOrderCursor(createdAt time.Time, id string) string {

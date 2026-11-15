@@ -22,6 +22,7 @@ export default function TrackOrderPage() {
 
     const [mode, setMode] = useState<"id" | "email">("id");
     const [query, setQuery] = useState("");
+    const [trackOrderId, setTrackOrderId] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [matchedOrders, setMatchedOrders] = useState<Order[]>([]);
@@ -29,11 +30,23 @@ export default function TrackOrderPage() {
     async function handleSearch(e: React.FormEvent) {
         e.preventDefault();
         const trimmed = query.trim();
+        const trimmedOrderId = trackOrderId.trim();
+
         if (!trimmed) {
             setError(
                 mode === "id"
                     ? t("กรุณากรอกหมายเลขคำสั่งซื้อ (Order ID)", "Please enter your Order ID")
                     : t("กรุณากรอกอีเมลที่ใช้สั่งซื้อ", "Please enter your customer email")
+            );
+            return;
+        }
+
+        if (mode === "email" && !trimmedOrderId) {
+            setError(
+                t(
+                    "กรุณากรอกหมายเลขคำสั่งซื้อ (Order ID) คู่กับอีเมลเพื่อยืนยันตัวตน",
+                    "Please enter both Order ID and Email to verify ownership"
+                )
             );
             return;
         }
@@ -54,25 +67,40 @@ export default function TrackOrderPage() {
                 router.push(`/orders/${encodeURIComponent(order.id)}`);
             } else {
                 const res = await apiFetch<
-                    Order[] | { data?: Order[]; orders?: Order[]; items?: Order[] }
+                    Order | Order[] | { data?: Order | Order[]; orders?: Order[]; items?: Order[] }
                 >("/orders/track", {
                     method: "POST",
-                    body: JSON.stringify({ email: trimmed }),
+                    body: JSON.stringify({
+                        order_id: trimmedOrderId,
+                        customer_email: trimmed,
+                    }),
                 });
 
-                const list = Array.isArray(res)
-                    ? res
-                    : res.data || res.orders || res.items || [];
-
-                if (list.length === 0) {
-                    setError(
-                        t(
-                            "ไม่พบประวัติคำสั่งซื้อที่เชื่อมโยงกับอีเมลนี้",
-                            "No orders found associated with this email address"
-                        )
-                    );
+                if (Array.isArray(res)) {
+                    if (res.length === 0) {
+                        throw new Error(t("ไม่พบข้อมูลคำสั่งซื้อ หรืออีเมลไม่ตรงกัน", "Order not found or email mismatch"));
+                    }
+                    setMatchedOrders(res);
+                } else if ("data" in res && Array.isArray(res.data)) {
+                    if (res.data.length === 0) {
+                        throw new Error(t("ไม่พบข้อมูลคำสั่งซื้อ หรืออีเมลไม่ตรงกัน", "Order not found or email mismatch"));
+                    }
+                    setMatchedOrders(res.data);
                 } else {
-                    setMatchedOrders(list);
+                    const order =
+                        "data" in res && res.data && !Array.isArray(res.data)
+                            ? (res.data as Order)
+                            : (res as Order);
+
+                    if (!order?.id) {
+                        throw new Error(
+                            t(
+                                "ไม่พบข้อมูลคำสั่งซื้อ หรืออีเมลไม่ตรงกับออเดอร์นี้",
+                                "Order not found or email mismatch"
+                            )
+                        );
+                    }
+                    router.push(`/orders/${encodeURIComponent(order.id)}`);
                 }
             }
         } catch (err: unknown) {
@@ -95,6 +123,8 @@ export default function TrackOrderPage() {
                 return "bg-amber-500/15 text-amber-600 ring-1 ring-amber-500/30 dark:text-amber-400";
             case "PAID":
             case "FULFILLING":
+            case "IN_QUEUE":
+            case "IN_PROGRESS":
                 return "bg-sky-500/15 text-sky-600 ring-1 ring-sky-500/30 dark:text-sky-400";
             case "EXPIRED":
                 return "bg-zinc-500/15 text-zinc-600 ring-1 ring-zinc-500/30 dark:text-zinc-400";
@@ -127,13 +157,15 @@ export default function TrackOrderPage() {
                         onClick={() => {
                             setMode("id");
                             setQuery("");
+                            setTrackOrderId("");
                             setError(null);
                             setMatchedOrders([]);
                         }}
-                        className={`flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-bold transition sm:text-sm ${mode === "id"
+                        className={`flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-bold transition sm:text-sm ${
+                            mode === "id"
                                 ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white"
                                 : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-                            }`}
+                        }`}
                     >
                         <Search className="h-4 w-4" />
                         <span>{t("ค้นหาด้วย Order ID", "Search by Order ID")}</span>
@@ -144,20 +176,41 @@ export default function TrackOrderPage() {
                         onClick={() => {
                             setMode("email");
                             setQuery("");
+                            setTrackOrderId("");
                             setError(null);
                             setMatchedOrders([]);
                         }}
-                        className={`flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-bold transition sm:text-sm ${mode === "email"
+                        className={`flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-bold transition sm:text-sm ${
+                            mode === "email"
                                 ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white"
                                 : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-                            }`}
+                        }`}
                     >
                         <Mail className="h-4 w-4" />
-                        <span>{t("ค้นหาด้วยอีเมล", "Search by Email")}</span>
+                        <span>{t("ยืนยันด้วยอีเมล + Order ID", "Verify with Email + Order ID")}</span>
                     </button>
                 </div>
 
                 <form onSubmit={handleSearch} className="space-y-4">
+                    {mode === "email" && (
+                        <div>
+                            <label
+                                htmlFor="track-order-id"
+                                className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300"
+                            >
+                                {t("หมายเลขคำสั่งซื้อ (Order ID)", "Order ID")}
+                            </label>
+                            <input
+                                id="track-order-id"
+                                type="text"
+                                value={trackOrderId}
+                                onChange={(e) => setTrackOrderId(e.target.value)}
+                                placeholder="เช่น ORD-9846827229065-859"
+                                className="w-full rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 transition outline-none focus:border-red-500 focus:bg-white focus:ring-2 focus:ring-red-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white dark:focus:border-red-500 dark:focus:bg-zinc-900"
+                            />
+                        </div>
+                    )}
+
                     <div>
                         <label
                             htmlFor="track-query"
@@ -173,7 +226,7 @@ export default function TrackOrderPage() {
                                 type={mode === "email" ? "email" : "text"}
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
-                                placeholder={mode === "id" ? "เช่น ord_01J..." : "name@example.com"}
+                                placeholder={mode === "id" ? "เช่น ORD-9846827229065-859" : "name@example.com"}
                                 className="w-full rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 transition outline-none focus:border-red-500 focus:bg-white focus:ring-2 focus:ring-red-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white dark:focus:border-red-500 dark:focus:bg-zinc-900"
                             />
                             <button

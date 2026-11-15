@@ -100,6 +100,11 @@ export default function Navbar() {
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
+
+                    <Link href="/admin" onClick={() => setMobileOpen(false)} className={navLinkClass("/admin")}>
+                        <ShieldCheck className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+                        <span>Backoffice {adminRole ? `(${adminRole})` : ""}</span>
+                    </Link>
                 </div>
 
                 <div className="flex items-center gap-2 md:hidden">
