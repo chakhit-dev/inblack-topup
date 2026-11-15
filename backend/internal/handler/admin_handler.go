@@ -270,10 +270,10 @@ func (h *AdminHandler) RefundOrder(c *gin.Context) {
 	var refundID string
 	var createdAt time.Time
 	err = tx.QueryRow(ctx, `
-		INSERT INTO refunds (order_id, amount, reason, status, initiated_by)
-		VALUES ($1, $2, $3, 'SUCCEEDED', $4)
-		RETURNING id, created_at
-	`, orderID, refundAmount, strings.TrimSpace(req.Reason), adminEmail).Scan(&refundID, &createdAt)
+        INSERT INTO refunds (order_id, idempotency_key, amount, reason, status, refunded_by)
+        VALUES ($1, $2, $3, $4, 'SUCCEEDED', $5)
+        RETURNING id, created_at
+    `, orderID, idemKey, refundAmount, strings.TrimSpace(req.Reason), adminEmail).Scan(&refundID, &createdAt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.NewProblem(
 			http.StatusInternalServerError, domain.CodeInternalServerError, "Database Error", "Failed to insert refund record",
@@ -282,6 +282,12 @@ func (h *AdminHandler) RefundOrder(c *gin.Context) {
 	}
 
 	newTotalRefunded := alreadyRefunded + refundAmount
+	if _, err := tx.Exec(ctx, `UPDATE orders SET refunded_amount = $1, updated_at = NOW() WHERE id = $2`, newTotalRefunded, orderID); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.NewProblem(
+			http.StatusInternalServerError, domain.CodeInternalServerError, "Database Error", "Failed to update order refunded amount",
+		))
+		return
+	}
 	newStatus := string(status)
 	if newTotalRefunded >= orderTotal {
 		if err := transitionOrder(ctx, tx, orderID, status, domain.StatusRefunded, adminEmail, "Full refund processed: "+strings.TrimSpace(req.Reason)); err != nil {
@@ -290,6 +296,7 @@ func (h *AdminHandler) RefundOrder(c *gin.Context) {
 			))
 			return
 		}
+
 		newStatus = string(domain.StatusRefunded)
 		// คืนสิทธิ์ Voucher หากคืนเงินเต็มจำนวน
 		_ = releaseOrderResources(ctx, tx, orderID)

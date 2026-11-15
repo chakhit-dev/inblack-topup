@@ -16,15 +16,15 @@ import (
 )
 
 func main() {
-	port := getEnv("PORT", "8080")
-	appEnv := getEnv("APP_ENV", "development")
-	instanceID := getEnv("INSTANCE_ID", "api-local")
-	databaseURL := getEnv("DATABASE_URL", "")
-	redisURL := getEnv("REDIS_URL", "")
+	port := getEnv("PORT")
+	appEnv := getEnv("APP_ENV")
+	instanceID := getEnv("INSTANCE_ID")
+	databaseURL := getEnv("DATABASE_URL")
+	redisURL := getEnv("REDIS_URL")
 
-	jwtSecret := getEnv("JWT_SECRET", "REDACTED")
-	smtpHost := getEnv("SMTP_HOST", "mailpit")
-	smtpPort := getEnv("SMTP_PORT", "1025")
+	jwtSecret := getEnv("JWT_SECRET")
+	smtpHost := getEnv("SMTP_HOST")
+	smtpPort := getEnv("SMTP_PORT")
 
 	if appEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -99,7 +99,7 @@ func main() {
 		})
 	})
 
-	webhookSecret := getEnv("PAYMENT_WEBHOOK_SECRET", "REDACTED")
+	webhookSecret := getEnv("PAYMENT_WEBHOOK_SECRET")
 
 	productHandler := handler.NewProductHandler(dbPool)
 	orderHandler := handler.NewOrderHandler(dbPool)
@@ -125,6 +125,7 @@ func main() {
 		}
 
 		admin := v1.Group("/admin")
+		admin.Use(authHandler.RequireAuth())
 		{
 			admin.GET("/orders",
 				handler.RequireRoles("viewer", "support", "finance", "superadmin"),
@@ -183,11 +184,12 @@ func main() {
 	log.Printf("[%s] Server exited cleanly", instanceID)
 }
 
-func getEnv(key, fallback string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
+func getEnv(key string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		log.Fatalf("FATAL: required environment variable %s is not set", key)
 	}
-	return fallback
+	return val
 }
 
 func placeholderHandler(name string) gin.HandlerFunc {

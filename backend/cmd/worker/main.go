@@ -26,11 +26,11 @@ const (
 )
 
 func main() {
-	instanceID := getEnv("INSTANCE_ID", "worker-1")
-	databaseURL := getEnv("DATABASE_URL", "")
-	redisURL := getEnv("REDIS_URL", "")
-	smtpHost := getEnv("SMTP_HOST", "mailpit")
-	smtpPort := getEnv("SMTP_PORT", "1025")
+	instanceID := getEnv("INSTANCE_ID")
+	databaseURL := getEnv("DATABASE_URL")
+	redisURL := getEnv("REDIS_URL")
+	smtpHost := getEnv("SMTP_HOST")
+	smtpPort := getEnv("SMTP_PORT")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -374,9 +374,10 @@ func sendReceiptEmail(host, port, toEmail, orderID, gameUID string, totalSatang 
 	}
 }
 
-func getEnv(key, fallback string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
+func getEnv(key string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		log.Fatalf("FATAL: required environment variable %s is not set", key)
 	}
-	return fallback
+	return val
 }

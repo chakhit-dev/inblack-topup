@@ -65,21 +65,44 @@ export function generateIdempotencyKey(prefix = "web"): string {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export interface ApiFetchOptions extends RequestInit {
+    auth?: boolean;
+}
+
 export async function apiFetch<T>(
-    path: string,
-    options: RequestInit = {}
+    endpoint: string,
+    options: ApiFetchOptions = {}
 ): Promise<T> {
-    const res = await fetch(`${API_BASE}${path}`, {
-        ...options,
-        headers: {
-            "Content-Type": "application/json",
-            ...(options.headers || {}),
-        },
+    const { auth, headers, ...restOptions } = options;
+
+    const finalHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(headers as Record<string, string>),
+    };
+
+    if (auth && typeof window !== "undefined") {
+        const token = localStorage.getItem("inblack_admin_token");
+        if (token) {
+            finalHeaders["Authorization"] = `Bearer ${token}`;
+        }
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
+    const res = await fetch(`${baseUrl}${endpoint}`, {
+        ...restOptions,
+        headers: finalHeaders,
     });
 
     const data = await res.json().catch(() => ({}));
+
     if (!res.ok) {
-        throw new Error(data.detail || data.title || data.message || `Request failed (${res.status})`);
+        throw new Error(
+            data.detail ||
+            data.title ||
+            data.message ||
+            `Request failed with status ${res.status}`
+        );
     }
+
     return data as T;
 }
