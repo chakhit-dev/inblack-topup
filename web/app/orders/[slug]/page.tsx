@@ -25,7 +25,16 @@ import {
 import { useLanguage } from "@/components/button/context";
 import { apiFetch, formatTHB, Order } from "@/lib/api";
 
-const TERMINAL_STATUSES = ["COMPLETED", "FAILED", "EXPIRED", "CANCELLED"];
+const TERMINAL_STATUSES = [
+  "COMPLETED",
+  "FAILED",
+  "EXPIRED",
+  "CANCELLED",
+  "PAYMENT_FAILED",
+  "REFUNDED",
+];
+
+const MOCK_PAY_URL = process.env.NEXT_PUBLIC_MOCK_PAY_URL;
 
 export default function OrderDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -36,6 +45,11 @@ export default function OrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [origin, setOrigin] = useState("");
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   const fetchOrder = useCallback(
     async (silent = false) => {
@@ -134,6 +148,8 @@ export default function OrderDetailPage() {
             "bg-sky-500/15 text-sky-600 ring-1 ring-sky-500/30 dark:text-sky-400",
           icon: <CheckCircle2 className="h-5 w-5 text-sky-500" />,
         };
+      case "IN_QUEUE":
+      case "IN_PROGRESS":
       case "FULFILLING":
         return {
           labelTh: "กำลังเติมเกม",
@@ -143,6 +159,36 @@ export default function OrderDetailPage() {
           badgeClass:
             "bg-indigo-500/15 text-indigo-600 ring-1 ring-indigo-500/30 dark:text-indigo-400",
           icon: <Loader2 className="h-5 w-5 animate-spin text-indigo-500" />,
+        };
+      case "NEEDS_REVIEW":
+        return {
+          labelTh: "รอแอดมินตรวจสอบ",
+          labelEn: "Needs Review",
+          descTh: "พบความคลาดเคลื่อนของยอดชำระหรือข้อมูล ทีมงานกำลังตรวจสอบให้คุณ",
+          descEn: "Payment discrepancy detected. Our team is reviewing your order",
+          badgeClass:
+            "bg-orange-500/15 text-orange-600 ring-1 ring-orange-500/30 dark:text-orange-400",
+          icon: <AlertCircle className="h-5 w-5 text-orange-500" />,
+        };
+      case "REFUNDED":
+        return {
+          labelTh: "คืนเงินสำเร็จ",
+          labelEn: "Refunded",
+          descTh: "ดำเนินการคืนเงินสำหรับคำสั่งซื้อนี้เรียบร้อยแล้ว",
+          descEn: "Payment for this order has been refunded",
+          badgeClass:
+            "bg-purple-500/15 text-purple-600 ring-1 ring-purple-500/30 dark:text-purple-400",
+          icon: <CheckCircle2 className="h-5 w-5 text-purple-500" />,
+        };
+      case "PAYMENT_FAILED":
+        return {
+          labelTh: "ชำระเงินไม่สำเร็จ",
+          labelEn: "Payment Failed",
+          descTh: "การชำระเงินถูกปฏิเสธจากผู้ให้บริการชำระเงิน",
+          descEn: "Payment was declined by the payment provider",
+          badgeClass:
+            "bg-red-500/15 text-red-600 ring-1 ring-red-500/30 dark:text-red-400",
+          icon: <XCircle className="h-5 w-5 text-red-500" />,
         };
       case "COMPLETED":
         return {
@@ -240,6 +286,13 @@ export default function OrderDetailPage() {
   const statusInfo = getStatusConfig(statusUpper);
   const isPending = statusUpper === "PENDING_PAYMENT";
   const isTerminal = TERMINAL_STATUSES.includes(statusUpper);
+
+  const returnUrl = `${origin}/orders/${encodeURIComponent(params.slug)}`;
+  const checkoutHref = MOCK_PAY_URL
+    ? `${MOCK_PAY_URL}/checkout?order_id=${encodeURIComponent(
+        order.id
+      )}&amount=${order.total}&return_url=${encodeURIComponent(returnUrl)}`
+    : "#";
 
   return (
     <main className="mx-auto min-h-[calc(100vh-8rem)] max-w-5xl px-4 py-8">
@@ -358,13 +411,19 @@ export default function OrderDetailPage() {
                   </p>
                 </div>
 
-                <Link
-                  href={`/mock-pay/${order.id}`}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-500"
-                >
-                  <span>{t("ไปหน้าชำระเงิน", "Proceed to Payment")}</span>
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+                {MOCK_PAY_URL ? (
+                  <a
+                    href={checkoutHref}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-500"
+                  >
+                    <span>{t("ไปหน้าชำระเงิน", "Proceed to Payment")}</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </a>
+                ) : (
+                  <span className="rounded-xl bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-500">
+                    Missing NEXT_PUBLIC_MOCK_PAY_URL
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -381,10 +440,11 @@ export default function OrderDetailPage() {
                   return (
                     <li key={ev.id || idx} className="ml-6">
                       <span
-                        className={`absolute -left-2 flex h-4 w-4 items-center justify-center rounded-full ring-4 ring-white dark:ring-zinc-900 ${isLatest
+                        className={`absolute -left-2 flex h-4 w-4 items-center justify-center rounded-full ring-4 ring-white dark:ring-zinc-900 ${
+                          isLatest
                             ? "bg-red-500"
                             : "bg-zinc-300 dark:bg-zinc-700"
-                          }`}
+                        }`}
                       />
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-sm font-bold text-zinc-900 dark:text-white">

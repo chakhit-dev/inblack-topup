@@ -1,0 +1,928 @@
+openapi: 3.1.0
+info:
+  title: InBlack Top-Up Platform API
+  version: 1.0.0
+  description: >
+    Game Top-Up Platform API with Strict Idempotency, Concurrency Control,
+    Real-Time SSE Tracking, and Exact Satang Accounting.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local / Gateway API v1
+  - url: http://localhost:8080
+    description: Operational Health & Readiness Probes
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ProblemDetail:
+      type: object
+      required: [type, title, status, detail, code]
+      properties:
+        type:
+          type: string
+          format: uri
+          example: https://inblackm.com/errors/OUT_OF_STOCK
+        title:
+          type: string
+          example: Out of Stock
+        status:
+          type: integer
+          example: 409
+        detail:
+          type: string
+          example: Insufficient stock for SKU FLASH-SKIN-01
+        instance:
+          type: string
+        code:
+          type: string
+          enum:
+            - OUT_OF_STOCK
+            - VOUCHER_EXHAUSTED
+            - PER_CUSTOMER_LIMIT
+            - PER_ORDER_LIMIT_EXCEEDED
+            - IDEMPOTENCY_KEY_REUSED
+            - INVALID_TRANSITION
+            - INVALID_ORDER_ID
+            - VALIDATION_FAILED
+            - VOUCHER_INVALID
+            - VOUCHER_MIN_SUBTOTAL
+            - NOT_FOUND
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - RATE_LIMIT_EXCEEDED
+            - INVALID_SIGNATURE
+            - OTP_EXPIRED_OR_INVALID
+            - OTP_MAX_ATTEMPTS
+            - OTP_INVALID
+            - INTERNAL_SERVER_ERROR
+
+    ProductResponse:
+      type: object
+      required: [id, sku, slug, name_th, name_en, price, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+          example: DIAMOND-1000
+        slug:
+          type: string
+          example: 1000-diamonds
+        name_th:
+          type: string
+        name_en:
+          type: string
+        price:
+          type: integer
+          format: int64
+          description: Price in satang (VAT inclusive)
+          example: 34900
+        stock:
+          type: ['integer', 'null']
+        limit_per_order:
+          type: ['integer', 'null']
+        limit_per_email:
+          type: ['integer', 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateOrderItemReq:
+      type: object
+      required: [sku, quantity]
+      properties:
+        sku:
+          type: string
+          example: DIAMOND-1000
+        quantity:
+          type: integer
+          minimum: 1
+          example: 1
+
+    CreateOrderReq:
+      type: object
+      required: [customer_email, game_uid, payment_method, items]
+      properties:
+        customer_email:
+          type: string
+          format: email
+        game_uid:
+          type: string
+        payment_method:
+          type: string
+          enum: [PROMPTPAY, TRUEMONEY, CREDIT_CARD]
+        voucher_code:
+          type: ['string', 'null']
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CreateOrderItemReq'
+
+    OrderItemResp:
+      type: object
+      required: [sku, product_name_th, product_name_en, unit_price, quantity, total_price]
+      properties:
+        sku:
+          type: string
+        product_name_th:
+          type: string
+        product_name_en:
+          type: string
+        unit_price:
+          type: integer
+          format: int64
+        quantity:
+          type: integer
+        total_price:
+          type: integer
+          format: int64
+
+    OrderStatus:
+      type: string
+      enum:
+        - PENDING_PAYMENT
+        - PAID
+        - IN_QUEUE
+        - IN_PROGRESS
+        - COMPLETED
+        - EXPIRED
+        - PAYMENT_FAILED
+        - FAILED
+        - REFUNDED
+        - NEEDS_REVIEW
+
+    OrderResp:
+      type: object
+      required:
+        - id
+        - customer_email
+        - game_uid
+        - payment_method
+        - subtotal
+        - discount
+        - net
+        - fee
+        - total
+        - vat
+        - status
+        - expires_at
+        - created_at
+        - items
+      properties:
+        id:
+          type: string
+          pattern: '^ORD-\d{13}-\d{3}$'
+          example: ORD-2587965432159-229
+        customer_email:
+          type: string
+          format: email
+        game_uid:
+          type: string
+        payment_method:
+          type: string
+          enum: [PROMPTPAY, TRUEMONEY, CREDIT_CARD]
+        voucher_code:
+          type: ['string', 'null']
+        subtotal:
+          type: integer
+          format: int64
+        discount:
+          type: integer
+          format: int64
+        net:
+          type: integer
+          format: int64
+        fee:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+        vat:
+          type: integer
+          format: int64
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItemResp'
+
+    OrderEventResp:
+      type: object
+      required: [id, to_status, actor, reason, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        from_status:
+          type: ['string', 'null']
+        to_status:
+          type: string
+        actor:
+          type: string
+        reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    TrackOrderReq:
+      type: object
+      required: [order_id, customer_email]
+      properties:
+        order_id:
+          type: string
+          pattern: '^ORD-\d{13}-\d{3}$'
+        customer_email:
+          type: string
+          format: email
+
+    TrackOrderResp:
+      allOf:
+        - $ref: '#/components/schemas/OrderResp'
+        - type: object
+          required: [events]
+          properties:
+            events:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrderEventResp'
+
+    PaymentWebhookPayload:
+      type: object
+      required: [event_id, event_type, order_id, amount, occurred_at]
+      properties:
+        event_id:
+          type: string
+        event_type:
+          type: string
+          enum: [payment.succeeded, payment.failed]
+        order_id:
+          type: string
+          pattern: '^ORD-\d{13}-\d{3}$'
+        amount:
+          type: integer
+          format: int64
+        occurred_at:
+          type: string
+          format: date-time
+
+    OTPRequestReq:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    OTPVerifyReq:
+      type: object
+      required: [email, code]
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+
+    RefundOrderReq:
+      type: object
+      required: [reason]
+      properties:
+        amount:
+          type: ['integer', 'null']
+          format: int64
+        reason:
+          type: string
+
+    SettlementRecord:
+      type: object
+      required: [order_id, amount]
+      properties:
+        order_id:
+          type: string
+        amount:
+          type: integer
+          format: int64
+        reference:
+          type: string
+
+    ReconciliationReq:
+      type: object
+      required: [settlement_date, records]
+      properties:
+        settlement_date:
+          type: string
+          format: date
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/SettlementRecord'
+
+paths:
+  /products:
+    get:
+      summary: List all top-up products
+      tags: [Products]
+      responses:
+        '200':
+          description: Product catalog list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductResponse'
+
+  /products/{slug}:
+    get:
+      summary: Get product details by slug
+      tags: [Products]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Single product details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ProductResponse'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /orders:
+    post:
+      summary: Create a new top-up order (Idempotent)
+      tags: [Orders]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderReq'
+      responses:
+        '201':
+          description: Order created or replayed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/OrderResp'
+        '400':
+          description: Validation error or missing Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Product SKU not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          description: Product out of stock or per-customer limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '422':
+          description: Idempotency key reused with different payload or voucher rule violated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /orders/{id}:
+    get:
+      summary: Get order details by ID
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^ORD-\d{13}-\d{3}$'
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/OrderResp'
+        '400':
+          description: Invalid Order ID format or checksum
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /orders/track:
+    post:
+      summary: Track order timeline using Order ID and Customer Email
+      tags: [Orders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackOrderReq'
+      responses:
+        '200':
+          description: Order details with append-only event timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TrackOrderResp'
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Order not found or email mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /orders/{id}/events:
+    get:
+      summary: Subscribe to real-time order status updates via SSE
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server-Sent Events stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /webhooks/payment:
+    post:
+      summary: Receive HMAC-SHA256 signed payment provider webhooks
+      tags: [Webhooks]
+      parameters:
+        - name: X-Webhook-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentWebhookPayload'
+      responses:
+        '200':
+          description: Webhook processed or acknowledged idempotently
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [processed, already_processed, ignored_duplicate_payment]
+                  event_id:
+                    type: string
+                  order_id:
+                    type: string
+                  order_status:
+                    type: string
+        '401':
+          description: Invalid HMAC signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /auth/otp/request:
+    post:
+      summary: Request 6-digit OTP via email
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPRequestReq'
+      responses:
+        '200':
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, expires_in_seconds]
+                properties:
+                  message:
+                    type: string
+                  expires_in_seconds:
+                    type: integer
+        '429':
+          description: Cooldown active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /auth/otp/verify:
+    post:
+      summary: Verify 6-digit OTP and receive JWT session token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPVerifyReq'
+      responses:
+        '200':
+          description: Authenticated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_at, user]
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+                  user:
+                    type: object
+                    required: [email, role]
+                    properties:
+                      email:
+                        type: string
+                      role:
+                        type: string
+        '401':
+          description: Invalid or expired OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /admin/orders:
+    get:
+      summary: List orders with cursor pagination and filters (Admin RBAC)
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+        - name: email
+          in: query
+          schema:
+            type: string
+        - name: order_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated orders
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OrderResp'
+                  pagination:
+                    type: object
+                    required: [next_cursor, limit]
+                    properties:
+                      next_cursor:
+                        type: ['string', 'null']
+                      limit:
+                        type: integer
+
+  /admin/orders/{id}/refund:
+    post:
+      summary: Refund an order (Finance / Superadmin only)
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundOrderReq'
+      responses:
+        '200':
+          description: Refund executed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - refund_id
+                      - order_id
+                      - refunded_amount
+                      - total_refunded
+                      - order_total
+                      - order_status
+                      - initiated_by
+                      - reason
+                      - created_at
+                    properties:
+                      refund_id:
+                        type: string
+                      order_id:
+                        type: string
+                      refunded_amount:
+                        type: integer
+                        format: int64
+                      total_refunded:
+                        type: integer
+                        format: int64
+                      order_total:
+                        type: integer
+                        format: int64
+                      order_status:
+                        type: string
+                      initiated_by:
+                        type: string
+                      reason:
+                        type: string
+                      created_at:
+                        type: string
+                        format: date-time
+        '403':
+          description: Insufficient role permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          description: Invalid transition or already fully refunded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /admin/orders/{id}/retry-fulfillment:
+    post:
+      summary: Re-queue a failed order for fulfillment (Support / Superadmin)
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order re-queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, order_id, status]
+                properties:
+                  message:
+                    type: string
+                  order_id:
+                    type: string
+                  status:
+                    type: string
+
+  /admin/audit-logs:
+    get:
+      summary: List admin audit logs with cursor pagination
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: order_id
+          in: query
+          schema:
+            type: string
+        - name: actor
+          in: query
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Paginated audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, order_id, to_status, actor, reason, created_at]
+                      properties:
+                        id:
+                          type: integer
+                          format: int64
+                        order_id:
+                          type: string
+                        from_status:
+                          type: ['string', 'null']
+                        to_status:
+                          type: string
+                        actor:
+                          type: string
+                        reason:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                  pagination:
+                    type: object
+                    required: [next_cursor, limit]
+                    properties:
+                      next_cursor:
+                        type: ['string', 'null']
+                      limit:
+                        type: integer
+
+  /admin/reconciliation:
+    post:
+      summary: Reconcile daily settlement records against system orders
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconciliationReq'
+      responses:
+        '200':
+          description: Reconciliation report generated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - settlement_date
+                  - summary
+                  - matched
+                  - amount_mismatch
+                  - missing_in_db
+                  - unsettled_in_gateway
+                properties:
+                  settlement_date:
+                    type: string
+                  summary:
+                    type: object
+                  matched:
+                    type: array
+                    items:
+                      type: object
+                  amount_mismatch:
+                    type: array
+                    items:
+                      type: object
+                  missing_in_db:
+                    type: array
+                    items:
+                      type: object
+                  unsettled_in_gateway:
+                    type: array
+                    items:
+                      type: object
+
+  /_test/reset:
+    post:
+      summary: Reset database and re-seed test fixtures (APP_ENV=test only)
+      tags: [Testing]
+      responses:
+        '200':
+          description: Test environment reset
+        '404':
+          description: Disabled outside APP_ENV=test

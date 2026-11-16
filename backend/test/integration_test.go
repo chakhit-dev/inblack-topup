@@ -26,11 +26,11 @@ func getTestConfig(t *testing.T) (baseURL, webhookSecret, jwtSecret string) {
 	}
 	webhookSecret = os.Getenv("PAYMENT_WEBHOOK_SECRET")
 	if webhookSecret == "" {
-		webhookSecret = "whsec_inblack_topup_secret_2026"
+		t.Fatal("PAYMENT_WEBHOOK_SECRET is not set")
 	}
 	jwtSecret = os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		jwtSecret = "inblack_topup_jwt_super_secret_2026"
+		jwtSecret = ""
 	}
 	return baseURL, webhookSecret, jwtSecret
 }
@@ -82,11 +82,11 @@ func TestIntegration_Idempotency(t *testing.T) {
 
 	idemKey := fmt.Sprintf("idem-test-%d", time.Now().UnixNano())
 	payload1 := []byte(`{
-		"customer_email": "alice@example.com",
-		"game_uid": "100200300",
-		"payment_method": "PROMPTPAY",
-		"items": [{"sku": "DIAMOND-1000", "quantity": 1}]
-	}`)
+        "customer_email": "alice@example.com",
+        "game_uid": "100200300",
+        "payment_method": "PROMPTPAY",
+        "items": [{"sku": "DIAMOND-1000", "quantity": 1}]
+    }`)
 
 	req1, _ := http.NewRequest(http.MethodPost, baseURL+"/orders", bytes.NewReader(payload1))
 	req1.Header.Set("Content-Type", "application/json")
@@ -128,11 +128,11 @@ func TestIntegration_Idempotency(t *testing.T) {
 	}
 
 	payloadDiff := []byte(`{
-		"customer_email": "alice@example.com",
-		"game_uid": "999999999",
-		"payment_method": "PROMPTPAY",
-		"items": [{"sku": "DIAMOND-1000", "quantity": 1}]
-	}`)
+        "customer_email": "alice@example.com",
+        "game_uid": "999999999",
+        "payment_method": "PROMPTPAY",
+        "items": [{"sku": "DIAMOND-1000", "quantity": 1}]
+    }`)
 	req3, _ := http.NewRequest(http.MethodPost, baseURL+"/orders", bytes.NewReader(payloadDiff))
 	req3.Header.Set("Content-Type", "application/json")
 	req3.Header.Set("Idempotency-Key", idemKey)
@@ -160,11 +160,11 @@ func TestIntegration_Concurrency_FlashSale(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			body := []byte(fmt.Sprintf(`{
-				"customer_email": "buyer-%d@example.com",
-				"game_uid": "UID-%d",
-				"payment_method": "PROMPTPAY",
-				"items": [{"sku": "FLASH-SKIN-01", "quantity": 1}]
-			}`, idx, idx))
+                "customer_email": "buyer-%d@example.com",
+                "game_uid": "UID-%d",
+                "payment_method": "PROMPTPAY",
+                "items": [{"sku": "FLASH-SKIN-01", "quantity": 1}]
+            }`, idx, idx))
 
 			req, _ := http.NewRequest(http.MethodPost, baseURL+"/orders", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
@@ -202,13 +202,12 @@ func TestIntegration_WebhookSignatureAndReplay(t *testing.T) {
 	baseURL, webhookSecret, _ := getTestConfig(t)
 	resetTestState(t, baseURL)
 
-	// สร้างออเดอร์ทดสอบ
 	orderBody := []byte(`{
-		"customer_email": "bob@example.com",
-		"game_uid": "555666",
-		"payment_method": "PROMPTPAY",
-		"items": [{"sku": "DIAMOND-1000", "quantity": 1}]
-	}`)
+        "customer_email": "bob@example.com",
+        "game_uid": "555666",
+        "payment_method": "PROMPTPAY",
+        "items": [{"sku": "DIAMOND-1000", "quantity": 1}]
+    }`)
 	req, _ := http.NewRequest(http.MethodPost, baseURL+"/orders", bytes.NewReader(orderBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", fmt.Sprintf("wh-order-%d", time.Now().UnixNano()))
@@ -226,12 +225,12 @@ func TestIntegration_WebhookSignatureAndReplay(t *testing.T) {
 	resp.Body.Close()
 
 	whPayload := []byte(fmt.Sprintf(`{
-		"event_id": "evt_%d",
-		"event_type": "payment.succeeded",
-		"order_id": "%s",
-		"amount": %d,
-		"occurred_at": "%s"
-	}`, time.Now().UnixNano(), created.Data.ID, created.Data.Total, time.Now().UTC().Format(time.RFC3339)))
+        "event_id": "evt_%d",
+        "event_type": "payment.succeeded",
+        "order_id": "%s",
+        "amount": %d,
+        "occurred_at": "%s"
+    }`, time.Now().UnixNano(), created.Data.ID, created.Data.Total, time.Now().UTC().Format(time.RFC3339)))
 
 	badReq, _ := http.NewRequest(http.MethodPost, baseURL+"/webhooks/payment", bytes.NewReader(whPayload))
 	badReq.Header.Set("Content-Type", "application/json")
@@ -278,11 +277,11 @@ func TestIntegration_RBAC_And_FailRetryRefund(t *testing.T) {
 	financeToken := mintAdminJWT(t, jwtSecret, "finance@inblack.gg", "finance")
 
 	orderBody := []byte(`{
-		"customer_email": "failcase@example.com",
-		"game_uid": "FAIL-9999",
-		"payment_method": "PROMPTPAY",
-		"items": [{"sku": "DIAMOND-1000", "quantity": 1}]
-	}`)
+        "customer_email": "failcase@example.com",
+        "game_uid": "FAIL-9999",
+        "payment_method": "PROMPTPAY",
+        "items": [{"sku": "DIAMOND-1000", "quantity": 1}]
+    }`)
 	req, _ := http.NewRequest(http.MethodPost, baseURL+"/orders", bytes.NewReader(orderBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", fmt.Sprintf("fail-e2e-%d", time.Now().UnixNano()))
@@ -300,12 +299,12 @@ func TestIntegration_RBAC_And_FailRetryRefund(t *testing.T) {
 	resp.Body.Close()
 
 	whPayload := []byte(fmt.Sprintf(`{
-		"event_id": "evt_fail_%d",
-		"event_type": "payment.succeeded",
-		"order_id": "%s",
-		"amount": %d,
-		"occurred_at": "%s"
-	}`, time.Now().UnixNano(), created.Data.ID, created.Data.Total, time.Now().UTC().Format(time.RFC3339)))
+        "event_id": "evt_fail_%d",
+        "event_type": "payment.succeeded",
+        "order_id": "%s",
+        "amount": %d,
+        "occurred_at": "%s"
+    }`, time.Now().UnixNano(), created.Data.ID, created.Data.Total, time.Now().UTC().Format(time.RFC3339)))
 	whReq, _ := http.NewRequest(http.MethodPost, baseURL+"/webhooks/payment", bytes.NewReader(whPayload))
 	whReq.Header.Set("Content-Type", "application/json")
 	whReq.Header.Set("X-Webhook-Signature", signWebhookPayload(webhookSecret, whPayload))
@@ -378,12 +377,12 @@ func TestIntegration_VoucherAndProductLimits(t *testing.T) {
 
 	// 1. ทดสอบยอดไม่ถึง min_subtotal ของ SAVE10 (ขั้นต่ำ 200.00 บาท = 20000 สตางค์)
 	lowBody := []byte(`{
-		"customer_email": "voucher-user@example.com",
-		"game_uid": "111222",
-		"payment_method": "PROMPTPAY",
-		"voucher_code": "SAVE10",
-		"items": [{"sku": "FLASH-SKIN-01", "quantity": 1}]
-	}`)
+        "customer_email": "voucher-user@example.com",
+        "game_uid": "111222",
+        "payment_method": "PROMPTPAY",
+        "voucher_code": "SAVE10",
+        "items": [{"sku": "FLASH-SKIN-01", "quantity": 1}]
+    }`)
 	req1, _ := http.NewRequest(http.MethodPost, baseURL+"/orders", bytes.NewReader(lowBody))
 	req1.Header.Set("Content-Type", "application/json")
 	req1.Header.Set("Idempotency-Key", fmt.Sprintf("v-min-%d", time.Now().UnixNano()))
@@ -396,30 +395,38 @@ func TestIntegration_VoucherAndProductLimits(t *testing.T) {
 		t.Errorf("expected 422 when subtotal < voucher min_subtotal, got %d", resp1.StatusCode)
 	}
 
-	// 2. สั่งซื้อ FLASH-SKIN-01 ครั้งที่ 1 (สำเร็จ 201)
+	// 2. สั่งซื้อ FLASH-SKIN-01 ครั้งที่ 1 และ 2 (สำเร็จ 201 เพราะโควตาต่ออีเมลคือ 2 ชิ้น)
 	validBody := []byte(`{
-		"customer_email": "limit-user@example.com",
-		"game_uid": "333444",
-		"payment_method": "PROMPTPAY",
-		"items": [{"sku": "FLASH-SKIN-01", "quantity": 1}]
-	}`)
-	req2, _ := http.NewRequest(http.MethodPost, baseURL+"/orders", bytes.NewReader(validBody))
-	req2.Header.Set("Content-Type", "application/json")
-	req2.Header.Set("Idempotency-Key", fmt.Sprintf("lim-1-%d", time.Now().UnixNano()))
-	resp2, _ := http.DefaultClient.Do(req2)
-	resp2.Body.Close()
-	if resp2.StatusCode != http.StatusCreated {
-		t.Fatalf("expected 201 on first purchase, got %d", resp2.StatusCode)
+        "customer_email": "limit-user@example.com",
+        "game_uid": "333444",
+        "payment_method": "PROMPTPAY",
+        "items": [{"sku": "FLASH-SKIN-01", "quantity": 1}]
+    }`)
+	for attempt := 1; attempt <= 2; attempt++ {
+		reqOk, _ := http.NewRequest(http.MethodPost, baseURL+"/orders", bytes.NewReader(validBody))
+		reqOk.Header.Set("Content-Type", "application/json")
+		reqOk.Header.Set("Idempotency-Key", fmt.Sprintf("lim-%d-%d", attempt, time.Now().UnixNano()))
+		respOk, err := http.DefaultClient.Do(reqOk)
+		if err != nil {
+			t.Fatalf("purchase #%d failed: %v", attempt, err)
+		}
+		respOk.Body.Close()
+		if respOk.StatusCode != http.StatusCreated {
+			t.Fatalf("expected 201 on purchase #%d (within 2-per-email limit), got %d", attempt, respOk.StatusCode)
+		}
 	}
 
-	// 3. อีเมลเดิมสั่งซื้อ FLASH-SKIN-01 ครั้งที่ 2 -> ต้องติด 409 Conflict (limit_per_email)
+	// 3. อีเมลเดิมสั่งซื้อ FLASH-SKIN-01 ครั้งที่ 3 -> เกินโควตา 2 ชิ้น ต้องติด 409 Conflict
 	req3, _ := http.NewRequest(http.MethodPost, baseURL+"/orders", bytes.NewReader(validBody))
 	req3.Header.Set("Content-Type", "application/json")
-	req3.Header.Set("Idempotency-Key", fmt.Sprintf("lim-2-%d", time.Now().UnixNano()))
-	resp3, _ := http.DefaultClient.Do(req3)
+	req3.Header.Set("Idempotency-Key", fmt.Sprintf("lim-3-%d", time.Now().UnixNano()))
+	resp3, err := http.DefaultClient.Do(req3)
+	if err != nil {
+		t.Fatalf("purchase #3 failed: %v", err)
+	}
 	resp3.Body.Close()
 	if resp3.StatusCode != http.StatusConflict {
-		t.Errorf("expected 409 Conflict on exceeding per-email product limit, got %d", resp3.StatusCode)
+		t.Errorf("expected 409 Conflict on exceeding 2-per-email product limit, got %d", resp3.StatusCode)
 	}
 }
 
@@ -428,11 +435,11 @@ func TestIntegration_WebhookAmountMismatch_NeedsReview(t *testing.T) {
 	resetTestState(t, baseURL)
 
 	orderBody := []byte(`{
-		"customer_email": "mismatch@example.com",
-		"game_uid": "777888",
-		"payment_method": "PROMPTPAY",
-		"items": [{"sku": "DIAMOND-1000", "quantity": 1}]
-	}`)
+        "customer_email": "mismatch@example.com",
+        "game_uid": "777888",
+        "payment_method": "PROMPTPAY",
+        "items": [{"sku": "DIAMOND-1000", "quantity": 1}]
+    }`)
 	req, _ := http.NewRequest(http.MethodPost, baseURL+"/orders", bytes.NewReader(orderBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", fmt.Sprintf("mm-ord-%d", time.Now().UnixNano()))
@@ -448,12 +455,12 @@ func TestIntegration_WebhookAmountMismatch_NeedsReview(t *testing.T) {
 
 	// ยิง Webhook ด้วยยอดเงินไม่ตรง (Total - 100)
 	whPayload := []byte(fmt.Sprintf(`{
-		"event_id": "evt_mm_%d",
-		"event_type": "payment.succeeded",
-		"order_id": "%s",
-		"amount": %d,
-		"occurred_at": "%s"
-	}`, time.Now().UnixNano(), created.Data.ID, created.Data.Total-100, time.Now().UTC().Format(time.RFC3339)))
+        "event_id": "evt_mm_%d",
+        "event_type": "payment.succeeded",
+        "order_id": "%s",
+        "amount": %d,
+        "occurred_at": "%s"
+    }`, time.Now().UnixNano(), created.Data.ID, created.Data.Total-100, time.Now().UTC().Format(time.RFC3339)))
 
 	whReq, _ := http.NewRequest(http.MethodPost, baseURL+"/webhooks/payment", bytes.NewReader(whPayload))
 	whReq.Header.Set("Content-Type", "application/json")

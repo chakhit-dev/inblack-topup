@@ -27,16 +27,63 @@ func TestOrderID_SpecExamplesAndGenerate(t *testing.T) {
 }
 
 func TestStateMachine_Transitions(t *testing.T) {
-	if !domain.CanTransition(domain.StatusPendingPayment, domain.StatusPaid) {
-		t.Error("PENDING_PAYMENT -> PAID should be allowed")
+	allStatuses := []domain.OrderStatus{
+		domain.StatusPendingPayment,
+		domain.StatusPaid,
+		domain.StatusInQueue,
+		domain.StatusInProgress,
+		domain.StatusCompleted,
+		domain.StatusExpired,
+		domain.StatusPaymentFailed,
+		domain.StatusFailed,
+		domain.StatusRefunded,
+		domain.StatusNeedsReview,
 	}
-	if !domain.CanTransition(domain.StatusExpired, domain.StatusPaid) {
-		t.Error("EXPIRED -> PAID (late webhook) should be allowed")
+
+	allowed := map[domain.OrderStatus]map[domain.OrderStatus]bool{
+		domain.StatusPendingPayment: {
+			domain.StatusPaid:          true,
+			domain.StatusExpired:       true,
+			domain.StatusPaymentFailed: true,
+		},
+		domain.StatusExpired: {
+			domain.StatusPaid: true,
+		},
+		domain.StatusPaid: {
+			domain.StatusInQueue: true,
+		},
+		domain.StatusInQueue: {
+			domain.StatusInProgress: true,
+		},
+		domain.StatusInProgress: {
+			domain.StatusCompleted: true,
+			domain.StatusFailed:    true,
+			domain.StatusInQueue:   true,
+		},
+		domain.StatusFailed: {
+			domain.StatusRefunded: true,
+			domain.StatusInQueue:  true,
+		},
+		domain.StatusCompleted: {
+			domain.StatusRefunded: true,
+		},
 	}
-	if domain.CanTransition(domain.StatusCompleted, domain.StatusPendingPayment) {
-		t.Error("COMPLETED -> PENDING_PAYMENT should be rejected")
-	}
-	if domain.CanTransition(domain.StatusPaid, domain.StatusFailed) {
-		t.Error("PAID -> FAILED (skipping queue/progress) should be rejected")
+
+	for _, from := range allStatuses {
+		for _, to := range allStatuses {
+			want := false
+			if from != to {
+				if to == domain.StatusNeedsReview {
+					want = true
+				} else if targets, ok := allowed[from]; ok && targets[to] {
+					want = true
+				}
+			}
+
+			got := domain.CanTransition(from, to)
+			if got != want {
+				t.Errorf("CanTransition(%s -> %s) = %v, want %v", from, to, got, want)
+			}
+		}
 	}
 }

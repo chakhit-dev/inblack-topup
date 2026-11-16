@@ -20,12 +20,12 @@ export default function Home() {
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     useEffect(() => {
-        apiFetch<any>("/products")
+        apiFetch<Product[] | { data?: Product[] }>("/products")
             .then((res) => {
                 const list = Array.isArray(res) ? res : (res.data || []);
                 setProducts(list);
             })
-            .catch((err) => setErrorMsg(err.message))
+            .catch((err) => setErrorMsg(err instanceof Error ? err.message : String(err)))
             .finally(() => setLoadingProducts(false));
     }, []);
 

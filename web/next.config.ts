@@ -1,11 +1,7 @@
 import type { NextConfig } from "next";
-import { loadEnvConfig } from "@next/env";
-import path from "path";
-
-loadEnvConfig(path.resolve(process.cwd(), ".."));
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  output: "standalone",
   experimental: {
     agentFeedback: true,
   },
@@ -18,11 +14,13 @@ const nextConfig: NextConfig = {
     },
   },
   async rewrites() {
-    const internalApiUrl = process.env.INTERNAL_API_URL || "http://localhost:8080";
+    if (process.env.NODE_ENV !== "development") {
+      return [];
+    }
     return [
       {
         source: "/api/:path*",
-        destination: `${internalApiUrl}/api/:path*`,
+        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/api/:path*`,
       },
     ];
   },

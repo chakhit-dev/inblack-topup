@@ -91,3 +91,51 @@ func TestCalculatePrice_SpecExamples(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculatePrice_EdgeCases(t *testing.T) {
+	t.Run("Fixed discount exceeds subtotal clamps net and total to 0", func(t *testing.T) {
+		voucher := &domain.VoucherRule{
+			Type:          domain.DiscountFixed,
+			DiscountValue: 50000,
+			MinSubtotal:   0,
+		}
+		got, err := domain.CalculatePrice(
+			[]domain.OrderItemInput{{UnitPrice: 9900, Quantity: 1}},
+			voucher,
+			domain.PaymentPromptPay,
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Discount != 9900 || got.Net != 0 || got.Total != 0 || got.VAT != 0 {
+			t.Errorf("expected zeroed net/total/vat when discount >= subtotal, got %+v", got)
+		}
+	})
+
+	t.Run("Subtotal below MinSubtotal returns error", func(t *testing.T) {
+		voucher := &domain.VoucherRule{
+			Type:          domain.DiscountPercentage,
+			DiscountValue: 10,
+			MinSubtotal:   20000,
+		}
+		_, err := domain.CalculatePrice(
+			[]domain.OrderItemInput{{UnitPrice: 9900, Quantity: 1}},
+			voucher,
+			domain.PaymentPromptPay,
+		)
+		if err == nil {
+			t.Fatal("expected error when subtotal < MinSubtotal, got nil")
+		}
+	})
+
+	t.Run("Invalid payment method returns error", func(t *testing.T) {
+		_, err := domain.CalculatePrice(
+			[]domain.OrderItemInput{{UnitPrice: 34900, Quantity: 1}},
+			nil,
+			domain.PaymentMethod("UNKNOWN_METHOD"),
+		)
+		if err == nil {
+			t.Fatal("expected error for invalid payment method, got nil")
+		}
+	})
+}

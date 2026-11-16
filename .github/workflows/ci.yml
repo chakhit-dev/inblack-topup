@@ -1,0 +1,72 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache-dependency-path: backend/go.sum
+      - run: cd backend && go vet ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      - run: cd web && npm ci && npm run lint && npx tsc --noEmit
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache-dependency-path: backend/go.sum
+      - run: cd backend && go test -v -race ./test -run "Test(OrderID|StateMachine|CalculatePrice)"
+
+  integration-e2e-build:
+    name: Build Images, Integration, Contract & Playwright E2E
+    needs: [lint-and-typecheck, unit-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Prepare .env & Build Docker Images
+        run: |
+          if [ ! -f .env ]; then cp .env.example .env; fi
+          docker compose up -d --build
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/readyz > /dev/null; then break; fi
+            sleep 2
+          done
+
+      - name: Run Contract & Integration Invariant Tests
+        run: make test-contract test-integration
+
+      - name: Run Playwright E2E Tests
+        run: |
+          cd web && npm ci && npx playwright install --with-deps chromium
+          npx playwright test
+
+      - name: Teardown Stack
+        if: always()
+        run: docker compose down -v

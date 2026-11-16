@@ -1,22 +1,25 @@
 services:
-  # web:
-  #   build:
-  #     context: ./web
-  #     dockerfile: Dockerfile
-  #   container_name: inblack_web
-  #   restart: unless-stopped
-  #   ports:
-  #     - "127.0.0.1:${WEB_PORT:-3000}:3000"
-  #   environment:
-  #     NODE_ENV: production
-  #     NEXT_PUBLIC_API_URL: http://localhost:${PROXY_PORT:-8080}
-  #     INTERNAL_API_URL: http://proxy:8080
-  #   depends_on:
-  #     - proxy
-      
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_MOCK_PAY_URL: ${NEXT_PUBLIC_MOCK_PAY_URL}
+    container_name: inblack_web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+
   postgres:
     image: postgres:16-alpine3.23
     container_name: inblack_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -34,6 +37,7 @@ services:
   redis:
     image: redis:8.2-alpine
     container_name: inblack_redis
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -47,6 +51,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.api
     container_name: inblack_api_1
+    restart: unless-stopped
     environment:
       APP_ENV: ${APP_ENV}
       PORT: ${PORT}
@@ -69,6 +74,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.api
     container_name: inblack_api_2
+    restart: unless-stopped
     environment:
       APP_ENV: ${APP_ENV}
       PORT: ${PORT}
@@ -97,6 +103,7 @@ services:
       INSTANCE_ID: worker-1
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
+      MOCK_GAME_URL: ${MOCK_GAME_URL:-http://mock-game:9001}
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
     depends_on:
@@ -105,6 +112,8 @@ services:
       redis:
         condition: service_healthy
       mailpit:
+        condition: service_started
+      mock-game:
         condition: service_started
 
   proxy:
@@ -118,10 +127,12 @@ services:
     depends_on:
       - api-1
       - api-2
+      - web
 
   mailpit:
     image: axllent/mailpit:latest
     container_name: inblack_mailpit
+    restart: unless-stopped
     ports:
       - "${MAILPIT_WEB_PORT:-8025}:8025"   # Web UI เปิดดู OTP และใบเสร็จ
       - "${MAILPIT_SMTP_PORT:-1025}:1025" # SMTP สำหรับ Backend ยิงอีเมลเข้า
@@ -129,6 +140,36 @@ services:
       MP_MAX_MESSAGES: 500
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  mock-pay:
+    build:
+      context: ./mock-pay
+      dockerfile: Dockerfile
+    container_name: inblack_mock_pay
+    restart: unless-stopped
+    ports:
+      - "${MOCK_PAY_PORT:-9000}:9000"
+    environment:
+      PORT: 9000
+      TARGET_WEBHOOK_URL: http://proxy:8080/api/v1/webhooks/payment
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET}
+    depends_on:
+      - proxy
+
+  mock-game:
+    build:
+      context: ./mock-game
+      dockerfile: Dockerfile
+    container_name: inblack_mock_game
+    restart: unless-stopped
+    ports:
+      - "${MOCK_GAME_PORT:-9001}:9001"
+    environment:
+      PORT: 9001
+      FAIL_RATE: ${FAIL_RATE:-0}
+      TIMEOUT_RATE: ${TIMEOUT_RATE:-0}
+      SUCCESS_BUT_TIMEOUT_RATE: ${SUCCESS_BUT_TIMEOUT_RATE:-0}
+      LATENCY_MS: ${LATENCY_MS:-0}
 
 volumes:
   inblack_pgdata:
